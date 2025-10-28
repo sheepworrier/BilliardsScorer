@@ -1,0 +1,5 @@
+{
+  "name": "English Billiards Scorer",
+  "description": "A modern and intuitive application to keep score of English Billiards games. It allows for setting up matches based on points or time, tracks detailed shot-by-shot breaks, and provides a comprehensive game summary. Designed for both casual and serious players.",
+  "requestFramePermissions": []
+}
