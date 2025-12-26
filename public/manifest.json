@@ -1,0 +1,16 @@
+{
+  "name": "English Billiards Scorer",
+  "short_name": "Billiards Scorer",
+  "description": "A modern and intuitive application to keep score of English Billiards games. It allows for setting up matches based on points or time, tracks detailed shot-by-shot breaks, and provides a comprehensive game summary. Designed for both casual and serious players.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
