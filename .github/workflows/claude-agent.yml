@@ -8,10 +8,28 @@ on:
 jobs:
   claude:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Run Claude Code
-        uses: docker://ghcr.io/anthropics/claude-code-action:latest
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run Claude Agent
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # This command tells Claude to look at the issue body and fix it
+        run: |
+          claude --non-interactive \
+            --print-architecture \
+            --goal "Fix the issue described in GitHub Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}. ${{ github.event.issue.body }}"
