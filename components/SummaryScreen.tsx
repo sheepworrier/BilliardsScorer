@@ -44,17 +44,24 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
     return `${minutes}:${seconds}`;
   };
 
-  const getShotSymbol = (type: ShotType): string => {
-    // Using Unicode symbols for better visual representation
-    if (type === ShotType.CANNON) return '\u25CF'; // ● filled circle for cannon
-    if (type.includes('In-off')) return '\u25B2'; // ▲ triangle for in-off
-    return '\u25A0'; // ■ square for pot
+  const getShotText = (type: ShotType): string => {
+    // Return the point value as text
+    if (type === ShotType.CANNON) return '2';
+    if (type === ShotType.POT_RED || type === ShotType.IN_OFF_RED) return '3';
+    if (type === ShotType.POT_OPPONENT || type === ShotType.IN_OFF_OPPONENT) return '2';
+    return '?';
   };
 
   const getShotColor = (type: ShotType): [number, number, number] => {
     if (type.includes('Red')) return [220, 38, 38]; // Red RGB
     if (type.includes('Opponent')) return [234, 179, 8]; // Yellow RGB
     return [59, 130, 246]; // Blue RGB for cannon
+  };
+
+  const getShotStyle = (type: ShotType): 'normal' | 'italic' => {
+    // In-off shots should be italic
+    if (type.includes('In-off')) return 'italic';
+    return 'normal';
   };
 
   const exportToPDF = () => {
@@ -171,16 +178,17 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
       doc.text(breakItem.total.toString(), xPos, yPos);
       doc.setFont('helvetica', 'normal');
 
-      // Shots with colored symbols - with line wrapping
+      // Shots with colored text - with line wrapping
       let shotXPos = xPos + 15;
       let currentYPos = yPos;
       breakItem.shots.forEach((shot, shotIndex) => {
         shot.types.forEach((type) => {
-          const symbol = getShotSymbol(type);
-          const symbolWidth = 4;
+          const text = getShotText(type);
+          const style = getShotStyle(type);
+          const textWidth = 4;
 
-          // Check if symbol would overflow
-          if (shotXPos + symbolWidth > xPos + maxWidth) {
+          // Check if text would overflow
+          if (shotXPos + textWidth > xPos + maxWidth) {
             currentYPos += 7;
             shotXPos = xPos + 15;
             // Check if we need a new page
@@ -206,8 +214,10 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
 
           const color = getShotColor(type);
           doc.setTextColor(color[0], color[1], color[2]);
-          doc.text(symbol, shotXPos, currentYPos);
-          shotXPos += symbolWidth;
+          doc.setFont('helvetica', style);
+          doc.text(text, shotXPos, currentYPos);
+          doc.setFont('helvetica', 'normal');
+          shotXPos += textWidth;
         });
 
         // Add comma separator between strokes (not after the last stroke)
@@ -246,14 +256,14 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
 
       // Foul indicator
       if (breakItem.endedByFoul) {
-        // Check if FOUL text would overflow
-        if (shotXPos + 15 > xPos + maxWidth) {
+        // Check if F text would overflow
+        if (shotXPos + 4 > xPos + maxWidth) {
           currentYPos += 7;
           shotXPos = xPos + 15;
         }
-        doc.setTextColor(239, 68, 68); // Red
+        doc.setTextColor(220, 38, 38); // Red (matching red ball color)
         doc.setFont('helvetica', 'bold');
-        doc.text('FOUL', shotXPos + 2, currentYPos);
+        doc.text('F', shotXPos + 2, currentYPos);
         doc.setFont('helvetica', 'normal');
       }
 

@@ -14,6 +14,11 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
   const [currentShotSelection, setCurrentShotSelection] = useState<ShotType[]>([]);
   const [foulMessage, setFoulMessage] = useState<string | null>(null);
   const [autoSaveTimer, setAutoSaveTimer] = useState<NodeJS.Timeout | null>(null);
+  const hasInitiallyMetTarget = useMemo(() =>
+    initialState.settings.mode === 'points' &&
+    (initialState.score1 >= initialState.settings.target || initialState.score2 >= initialState.settings.target),
+    [initialState]
+  );
 
   const currentPlayer = useMemo(() => state.currentPlayerIndex === 0 ? state.settings.player1 : state.settings.player2, [state.currentPlayerIndex, state.settings]);
   
@@ -188,20 +193,21 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
             consecutiveHazards = 0;
         }
 
-        // Calculate new score, capping at target in points mode
+        // Calculate new score, capping at target in points mode for the frame score
         const newScore = prevState[scoreToUpdate] + newShot.points;
         const cappedScore = prevState.settings.mode === 'points'
           ? Math.min(newScore, prevState.settings.target)
           : newScore;
 
-        // Calculate actual points added (after capping)
-        const actualPointsAdded = cappedScore - prevState[scoreToUpdate];
+        // Note: newBreakScore is already calculated above for baulk line checking
+        // Break score should NOT be capped - it shows the actual points scored
+        // even if the frame score is capped at the target
 
         return {
             ...prevState,
             [scoreToUpdate]: cappedScore,
             currentBreakShots: [...prevState.currentBreakShots, newShot],
-            currentBreakScore: prevState.currentBreakScore + actualPointsAdded,
+            currentBreakScore: newBreakScore,
             shotHistory,
             consecutiveCannons,
             consecutiveHazards,
@@ -246,7 +252,15 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
   }, []);
 
   useEffect(() => {
-      if (state.settings.mode === 'points' && (state.score1 >= state.settings.target || state.score2 >= state.settings.target) && !state.isGameOver) {
+      // Only trigger game end if:
+      // 1. We're in points mode
+      // 2. A player has reached the target
+      // 3. The game is not already marked as over
+      // 4. The game didn't already meet the target when we started (i.e., not returning from summary)
+      if (state.settings.mode === 'points' &&
+          (state.score1 >= state.settings.target || state.score2 >= state.settings.target) &&
+          !state.isGameOver &&
+          !hasInitiallyMetTarget) {
           // Save any unfinished break before ending the game
           const finalState = state.currentBreakScore > 0 ? {
             ...state,
@@ -259,7 +273,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
           } : state;
           onEndGame(finalState);
       }
-  }, [state.score1, state.score2, state.settings.mode, state.settings.target, state.isGameOver, state.currentBreakScore, state.currentBreakShots, state.currentPlayerIndex, state.breaks, onEndGame]);
+  }, [state.score1, state.score2, state.settings.mode, state.settings.target, state.isGameOver, state.currentBreakScore, state.currentBreakShots, state.currentPlayerIndex, state.breaks, hasInitiallyMetTarget, onEndGame]);
 
   const formatTime = (totalSeconds: number) => {
     const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
