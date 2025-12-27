@@ -45,9 +45,9 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
   };
 
   const getShotSymbol = (type: ShotType): string => {
-    if (type === ShotType.CANNON) return '⚫⚫'; // Two circles for cannon
-    if (type.includes('In-off')) return '🔽'; // Down arrow for in-off
-    return '◀'; // Left arrow for pot
+    if (type === ShotType.CANNON) return 'C'; // C for cannon
+    if (type.includes('In-off')) return 'I'; // I for in-off
+    return 'P'; // P for pot
   };
 
   const getShotColor = (type: ShotType): [number, number, number] => {
@@ -157,6 +157,8 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
       const timeStr = formatTimeFromStart(breakItem.timestamp);
       const isPlayer1 = breakItem.playerIndex === 0;
       const xPos = isPlayer1 ? 50 : pageWidth / 2 + 20;
+      const maxWidth = (pageWidth / 2) - 30; // Maximum width for the shot column
+      const startYPos = yPos;
 
       // Time
       doc.setTextColor(100, 100, 100);
@@ -168,33 +170,91 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
       doc.text(breakItem.total.toString(), xPos, yPos);
       doc.setFont('helvetica', 'normal');
 
-      // Shots with colored symbols
+      // Shots with colored symbols - with line wrapping
       let shotXPos = xPos + 15;
+      let currentYPos = yPos;
       breakItem.shots.forEach((shot, shotIndex) => {
         if (shotIndex > 0) {
+          // Check if separator would overflow
+          if (shotXPos + 3 > xPos + maxWidth) {
+            currentYPos += 7;
+            shotXPos = xPos + 15;
+            // Check if we need a new page
+            if (currentYPos > 270) {
+              doc.addPage();
+              currentYPos = 20;
+              yPos = 20;
+
+              // Repeat headers on new page
+              doc.setFillColor(50, 50, 50);
+              doc.rect(20, currentYPos - 5, pageWidth - 40, 8, 'F');
+              doc.setFontSize(9);
+              doc.setTextColor(255, 255, 255);
+              doc.text('Time', 25, currentYPos);
+              doc.text(settings.player1.name, 50, currentYPos);
+              doc.text(settings.player2.name, pageWidth / 2 + 20, currentYPos);
+              currentYPos += 8;
+              doc.setTextColor(0, 0, 0);
+              doc.setFontSize(8);
+              shotXPos = xPos + 15;
+            }
+          }
           doc.setTextColor(150, 150, 150);
-          doc.text('|', shotXPos, yPos);
+          doc.text('|', shotXPos, currentYPos);
           shotXPos += 3;
         }
 
         shot.types.forEach((type) => {
           const symbol = getShotSymbol(type);
+          const symbolWidth = 4;
+
+          // Check if symbol would overflow
+          if (shotXPos + symbolWidth > xPos + maxWidth) {
+            currentYPos += 7;
+            shotXPos = xPos + 15;
+            // Check if we need a new page
+            if (currentYPos > 270) {
+              doc.addPage();
+              currentYPos = 20;
+              yPos = 20;
+
+              // Repeat headers on new page
+              doc.setFillColor(50, 50, 50);
+              doc.rect(20, currentYPos - 5, pageWidth - 40, 8, 'F');
+              doc.setFontSize(9);
+              doc.setTextColor(255, 255, 255);
+              doc.text('Time', 25, currentYPos);
+              doc.text(settings.player1.name, 50, currentYPos);
+              doc.text(settings.player2.name, pageWidth / 2 + 20, currentYPos);
+              currentYPos += 8;
+              doc.setTextColor(0, 0, 0);
+              doc.setFontSize(8);
+              shotXPos = xPos + 15;
+            }
+          }
+
           const color = getShotColor(type);
           doc.setTextColor(color[0], color[1], color[2]);
-          doc.text(symbol, shotXPos, yPos);
-          shotXPos += symbol.length === 2 ? 5 : 4;
+          doc.text(symbol, shotXPos, currentYPos);
+          shotXPos += symbolWidth;
         });
       });
 
       // Foul indicator
       if (breakItem.endedByFoul) {
+        // Check if FOUL text would overflow
+        if (shotXPos + 15 > xPos + maxWidth) {
+          currentYPos += 7;
+          shotXPos = xPos + 15;
+        }
         doc.setTextColor(239, 68, 68); // Red
         doc.setFont('helvetica', 'bold');
-        doc.text('FOUL', shotXPos + 2, yPos);
+        doc.text('FOUL', shotXPos + 2, currentYPos);
         doc.setFont('helvetica', 'normal');
       }
 
-      yPos += 7;
+      // Update yPos to account for any line wrapping
+      yPos = currentYPos + 7;
     });
 
     // Footer
