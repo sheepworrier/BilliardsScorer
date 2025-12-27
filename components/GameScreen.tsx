@@ -246,7 +246,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
   }, []);
 
   useEffect(() => {
-      if (state.settings.mode === 'points' && (state.score1 >= state.settings.target || state.score2 >= state.settings.target) && !state.isGameOver) {
+      if (state.settings.mode === 'points' && (state.score1 >= state.settings.target || state.score2 >= state.settings.target) && !state.isGameOver && !initialState.isGameOver) {
           // Save any unfinished break before ending the game
           const finalState = state.currentBreakScore > 0 ? {
             ...state,
@@ -259,7 +259,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
           } : state;
           onEndGame(finalState);
       }
-  }, [state, onEndGame]);
+  }, [state, onEndGame, initialState.isGameOver]);
 
   const formatTime = (totalSeconds: number) => {
     const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
