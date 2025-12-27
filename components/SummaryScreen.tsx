@@ -19,7 +19,7 @@ const ShotIcon: React.FC<ShotIconProps> = ({ type }) => {
 
 const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame }) => {
   const { settings, score1, score2, breaks } = gameState;
-  
+
   const winner = useMemo(() => {
     if (score1 > score2) return settings.player1;
     if (score2 > score1) return settings.player2;
@@ -40,6 +40,60 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame }) =
     const minutes = Math.floor(diff / 60).toString().padStart(2, '0');
     const seconds = (diff % 60).toString().padStart(2, '0');
     return `${minutes}:${seconds}`;
+  };
+
+  const exportToPDF = () => {
+    // Create a simple text-based PDF content
+    const gameDate = new Date(gameState.startTime).toLocaleString();
+    const gameMode = settings.mode === 'points' ? `${settings.target} points` : `${settings.target} minutes`;
+
+    let pdfContent = `ENGLISH BILLIARDS SCORE SHEET\n\n`;
+    pdfContent += `Date: ${gameDate}\n`;
+    pdfContent += `Game Mode: ${gameMode}\n\n`;
+    pdfContent += `FINAL SCORES\n`;
+    pdfContent += `${settings.player1.name}: ${score1} (Top Break: ${topBreaks.p1Top})\n`;
+    pdfContent += `${settings.player2.name}: ${score2} (Top Break: ${topBreaks.p2Top})\n\n`;
+
+    if (winner) {
+      pdfContent += `Winner: ${winner.name}\n\n`;
+    } else {
+      pdfContent += `Result: Draw\n\n`;
+    }
+
+    pdfContent += `GAME LOG\n`;
+    pdfContent += `${'Time'.padEnd(8)} | ${'Player'.padEnd(20)} | ${'Break'.padEnd(6)} | Shots\n`;
+    pdfContent += `${'-'.repeat(80)}\n`;
+
+    breaks.forEach(breakItem => {
+      const timeStr = formatTimeFromStart(breakItem.timestamp);
+      const playerName = breakItem.playerIndex === 0 ? settings.player1.name : settings.player2.name;
+      const breakTotal = breakItem.total.toString();
+
+      const shotTypes = breakItem.shots.map(shot => {
+        return shot.types.map(type => {
+          if (type.includes('CANNON')) return 'C';
+          if (type === ShotType.POT_RED) return 'PR';
+          if (type === ShotType.IN_OFF_RED) return 'IR';
+          if (type === ShotType.POT_OPPONENT) return 'PO';
+          if (type === ShotType.IN_OFF_OPPONENT) return 'IO';
+          return '';
+        }).join('+');
+      }).join(' | ');
+
+      const foulStr = breakItem.endedByFoul ? ' [FOUL]' : '';
+      pdfContent += `${timeStr.padEnd(8)} | ${playerName.padEnd(20)} | ${breakTotal.padEnd(6)} | ${shotTypes}${foulStr}\n`;
+    });
+
+    // Create a blob and download
+    const blob = new Blob([pdfContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `billiards-score-${new Date(gameState.startTime).toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
   
   return (
@@ -118,7 +172,13 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame }) =
       </div>
 
 
-      <div className="mt-8">
+      <div className="mt-8 flex gap-4">
+        <button
+          onClick={exportToPDF}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition-colors duration-300 text-lg"
+        >
+          Export to PDF
+        </button>
         <button
           onClick={onNewGame}
           className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg transition-colors duration-300 text-lg"

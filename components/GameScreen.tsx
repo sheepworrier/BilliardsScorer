@@ -13,6 +13,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [currentShotSelection, setCurrentShotSelection] = useState<ShotType[]>([]);
   const [foulMessage, setFoulMessage] = useState<string | null>(null);
+  const [autoSaveTimer, setAutoSaveTimer] = useState<NodeJS.Timeout | null>(null);
 
   const currentPlayer = useMemo(() => state.currentPlayerIndex === 0 ? state.settings.player1 : state.settings.player2, [state.currentPlayerIndex, state.settings]);
   
@@ -23,13 +24,50 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
     }
   }, [foulMessage]);
 
+  // Auto-save effect: automatically add shot to break after 3 seconds of inactivity
+  useEffect(() => {
+    if (currentShotSelection.length === 0) {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        setAutoSaveTimer(null);
+      }
+      return;
+    }
+
+    // Clear existing timer
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+    }
+
+    // Set new timer
+    const timer = setTimeout(() => {
+      addCombinedShot();
+    }, 3000);
+
+    setAutoSaveTimer(timer);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [currentShotSelection]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (state.settings.mode === 'time') {
       const timer = setInterval(() => {
         const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
         setTimeElapsed(elapsed);
         if (elapsed >= state.settings.target * 60) {
-          onEndGame(state);
+          // Save any unfinished break before ending the game
+          const finalState = state.currentBreakScore > 0 ? {
+            ...state,
+            breaks: [...state.breaks, {
+              playerIndex: state.currentPlayerIndex,
+              shots: state.currentBreakShots,
+              total: state.currentBreakScore,
+              timestamp: Date.now(),
+            }]
+          } : state;
+          onEndGame(finalState);
           clearInterval(timer);
         }
       }, 1000);
@@ -58,7 +96,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
       timestamp: Date.now(),
       endedByFoul: reason,
     };
-    
+
     return {
       ...prevState,
       [opponentScoreToUpdate]: prevState[opponentScoreToUpdate] + 2,
@@ -73,8 +111,19 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
     };
   }, []);
 
+  const recordFoul = useCallback(() => {
+    setState(prevState => handleFoul(prevState, 'Manual foul recorded'));
+    setCurrentShotSelection([]);
+  }, [handleFoul]);
+
   const addCombinedShot = useCallback(() => {
     if (currentShotSelection.length === 0) return;
+
+    // Clear auto-save timer
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+      setAutoSaveTimer(null);
+    }
 
     const points = currentShotSelection.reduce((total, type) => {
         const config = SHOT_CONFIG.find(sc => sc.type === type);
@@ -82,7 +131,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
     }, 0);
 
     const newShot: Shot = { types: currentShotSelection, points };
-    
+
     setState(prevState => {
         const hasCannon = newShot.types.includes(ShotType.CANNON);
         const hasHazard = newShot.types.some(t => t !== ShotType.CANNON);
@@ -93,10 +142,10 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
         if (!hasCannon && hasHazard && prevState.consecutiveHazards >= 15) {
             return handleFoul(prevState, 'Exceeded 15 consecutive hazards');
         }
-        
+
         const shotHistory = [...prevState.shotHistory, prevState];
         const scoreToUpdate = prevState.currentPlayerIndex === 0 ? 'score1' : 'score2';
-        
+
         const opponentPotted = newShot.types.includes(ShotType.POT_OPPONENT);
 
         let consecutiveCannons = prevState.consecutiveCannons;
@@ -113,11 +162,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
             consecutiveHazards = 0;
         }
 
+        // Calculate new score, capping at target in points mode
+        const newScore = prevState[scoreToUpdate] + newShot.points;
+        const cappedScore = prevState.settings.mode === 'points'
+          ? Math.min(newScore, prevState.settings.target)
+          : newScore;
+
+        // Calculate actual points added (after capping)
+        const actualPointsAdded = cappedScore - prevState[scoreToUpdate];
+
         return {
             ...prevState,
-            [scoreToUpdate]: prevState[scoreToUpdate] + newShot.points,
+            [scoreToUpdate]: cappedScore,
             currentBreakShots: [...prevState.currentBreakShots, newShot],
-            currentBreakScore: prevState.currentBreakScore + newShot.points,
+            currentBreakScore: prevState.currentBreakScore + actualPointsAdded,
             shotHistory,
             consecutiveCannons,
             consecutiveHazards,
@@ -125,7 +183,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
         };
     });
     setCurrentShotSelection([]);
-  }, [currentShotSelection, handleFoul]);
+  }, [currentShotSelection, handleFoul, autoSaveTimer]);
 
 
   const undoLastShot = useCallback(() => {
@@ -162,7 +220,17 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
 
   useEffect(() => {
       if (state.settings.mode === 'points' && (state.score1 >= state.settings.target || state.score2 >= state.settings.target)) {
-          onEndGame(state);
+          // Save any unfinished break before ending the game
+          const finalState = state.currentBreakScore > 0 ? {
+            ...state,
+            breaks: [...state.breaks, {
+              playerIndex: state.currentPlayerIndex,
+              shots: state.currentBreakShots,
+              total: state.currentBreakScore,
+              timestamp: Date.now(),
+            }]
+          } : state;
+          onEndGame(finalState);
       }
   }, [state, onEndGame]);
 
@@ -183,6 +251,35 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
     );
   }, [state.settings.mode, state.settings.target, timeElapsed]);
 
+  const predictedScores = useMemo(() => {
+    if (state.settings.mode === 'points') {
+      // Calculate predicted final scores based on progress toward target
+      const target = state.settings.target;
+      const totalScored = state.score1 + state.score2;
+      if (totalScored === 0) return null;
+
+      const player1Percentage = state.score1 / totalScored;
+      const player2Percentage = state.score2 / totalScored;
+
+      const predicted1 = Math.round(target * player1Percentage);
+      const predicted2 = Math.round(target * player2Percentage);
+
+      return { predicted1, predicted2 };
+    } else {
+      // Time mode: extrapolate based on time elapsed
+      if (timeElapsed === 0) return null;
+
+      const totalTime = state.settings.target * 60;
+      const timeProgress = timeElapsed / totalTime;
+      if (timeProgress === 0) return null;
+
+      const predicted1 = Math.round(state.score1 / timeProgress);
+      const predicted2 = Math.round(state.score2 / timeProgress);
+
+      return { predicted1, predicted2 };
+    }
+  }, [state.settings.mode, state.settings.target, state.score1, state.score2, timeElapsed]);
+
 
   return (
     <div className="flex flex-col h-full relative">
@@ -196,10 +293,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
         <div className={`p-4 rounded-lg text-center border-4 ${state.currentPlayerIndex === 0 ? 'border-green-400' : 'border-transparent'}`}>
             <div className="text-xl font-bold">{state.settings.player1.name}</div>
             <div className="text-5xl font-mono font-bold tracking-tighter">{state.score1}</div>
+            {predictedScores && (
+              <div className="text-sm text-gray-400 mt-1">
+                Predicted: {predictedScores.predicted1}
+              </div>
+            )}
         </div>
         <div className={`p-4 rounded-lg text-center border-4 ${state.currentPlayerIndex === 1 ? 'border-green-400' : 'border-transparent'}`}>
             <div className="text-xl font-bold">{state.settings.player2.name}</div>
             <div className="text-5xl font-mono font-bold tracking-tighter">{state.score2}</div>
+            {predictedScores && (
+              <div className="text-sm text-gray-400 mt-1">
+                Predicted: {predictedScores.predicted2}
+              </div>
+            )}
         </div>
       </div>
 
@@ -245,12 +352,28 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
             {SHOT_CONFIG.map(({ type, label, icon: Icon, color }) => {
                 const isSelected = currentShotSelection.includes(type);
                 const isOpponentShot = type === ShotType.POT_OPPONENT || type === ShotType.IN_OFF_OPPONENT;
-                const isDisabled = isOpponentShot && state.isOpponentBallPotted;
+                const isCannonShot = type === ShotType.CANNON;
+
+                // Disable opponent shots if opponent ball already potted
+                const disabledByOpponentPotted = isOpponentShot && state.isOpponentBallPotted;
+
+                // Disable cannon if opponent ball potted in current selection
+                const opponentPottedInSelection = currentShotSelection.includes(ShotType.POT_OPPONENT);
+                const disabledByCannonRule = isCannonShot && opponentPottedInSelection;
+
+                // Prevent both in-off red and in-off opponent in same stroke
+                const isInOffRed = type === ShotType.IN_OFF_RED;
+                const isInOffOpponent = type === ShotType.IN_OFF_OPPONENT;
+                const hasInOffRed = currentShotSelection.includes(ShotType.IN_OFF_RED);
+                const hasInOffOpponent = currentShotSelection.includes(ShotType.IN_OFF_OPPONENT);
+                const disabledByInOffRule = (isInOffRed && hasInOffOpponent) || (isInOffOpponent && hasInOffRed);
+
+                const isDisabled = disabledByOpponentPotted || disabledByCannonRule || disabledByInOffRule;
 
                 return (
-                    <button 
-                        key={type} 
-                        onClick={() => toggleShotSelection(type)} 
+                    <button
+                        key={type}
+                        onClick={() => toggleShotSelection(type)}
                         disabled={isDisabled}
                         className={`${isDisabled ? 'bg-gray-600 opacity-50 cursor-not-allowed' : color} text-white font-semibold p-2 rounded-lg flex flex-col items-center justify-center text-center text-xs h-20 transition-transform transform ${isSelected && !isDisabled ? 'ring-4 ring-green-400 scale-105' : 'hover:scale-105'}`}
                     >
@@ -267,14 +390,31 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
         >
             Add Shot to Break
         </button>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 mb-3">
             <button onClick={undoLastShot} className="bg-gray-600 hover:bg-gray-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
                 <UndoIcon className="w-6 h-6 mr-2" /> Undo
             </button>
             <button onClick={endTurn} className="bg-gray-600 hover:bg-gray-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
                 Miss / End <NextPlayerIcon className="w-6 h-6 ml-2" />
             </button>
-            <button onClick={() => onEndGame(state)} className="bg-red-700 hover:bg-red-800 text-white font-bold p-3 rounded-lg">End Game</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+            <button onClick={recordFoul} className="bg-orange-600 hover:bg-orange-700 text-white font-bold p-3 rounded-lg">
+                Record Foul
+            </button>
+            <button onClick={() => {
+              // Save any unfinished break before ending the game
+              const finalState = state.currentBreakScore > 0 ? {
+                ...state,
+                breaks: [...state.breaks, {
+                  playerIndex: state.currentPlayerIndex,
+                  shots: state.currentBreakShots,
+                  total: state.currentBreakScore,
+                  timestamp: Date.now(),
+                }]
+              } : state;
+              onEndGame(finalState);
+            }} className="bg-red-700 hover:bg-red-800 text-white font-bold p-3 rounded-lg">End Game</button>
         </div>
       </div>
     </div>
