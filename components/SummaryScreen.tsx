@@ -45,9 +45,10 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
   };
 
   const getShotSymbol = (type: ShotType): string => {
-    if (type === ShotType.CANNON) return 'C'; // C for cannon
-    if (type.includes('In-off')) return 'I'; // I for in-off
-    return 'P'; // P for pot
+    // Using Unicode symbols for better visual representation
+    if (type === ShotType.CANNON) return '\u25CF'; // ● filled circle for cannon
+    if (type.includes('In-off')) return '\u25B2'; // ▲ triangle for in-off
+    return '\u25A0'; // ■ square for pot
   };
 
   const getShotColor = (type: ShotType): [number, number, number] => {
@@ -174,36 +175,6 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
       let shotXPos = xPos + 15;
       let currentYPos = yPos;
       breakItem.shots.forEach((shot, shotIndex) => {
-        if (shotIndex > 0) {
-          // Check if separator would overflow
-          if (shotXPos + 3 > xPos + maxWidth) {
-            currentYPos += 7;
-            shotXPos = xPos + 15;
-            // Check if we need a new page
-            if (currentYPos > 270) {
-              doc.addPage();
-              currentYPos = 20;
-              yPos = 20;
-
-              // Repeat headers on new page
-              doc.setFillColor(50, 50, 50);
-              doc.rect(20, currentYPos - 5, pageWidth - 40, 8, 'F');
-              doc.setFontSize(9);
-              doc.setTextColor(255, 255, 255);
-              doc.text('Time', 25, currentYPos);
-              doc.text(settings.player1.name, 50, currentYPos);
-              doc.text(settings.player2.name, pageWidth / 2 + 20, currentYPos);
-              currentYPos += 8;
-              doc.setTextColor(0, 0, 0);
-              doc.setFontSize(8);
-              shotXPos = xPos + 15;
-            }
-          }
-          doc.setTextColor(150, 150, 150);
-          doc.text('|', shotXPos, currentYPos);
-          shotXPos += 3;
-        }
-
         shot.types.forEach((type) => {
           const symbol = getShotSymbol(type);
           const symbolWidth = 4;
@@ -238,6 +209,39 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
           doc.text(symbol, shotXPos, currentYPos);
           shotXPos += symbolWidth;
         });
+
+        // Add comma separator between strokes (not after the last stroke)
+        if (shotIndex < breakItem.shots.length - 1) {
+          // Check if comma would overflow
+          if (shotXPos + 3 > xPos + maxWidth) {
+            currentYPos += 7;
+            shotXPos = xPos + 15;
+            // Check if we need a new page
+            if (currentYPos > 270) {
+              doc.addPage();
+              currentYPos = 20;
+              yPos = 20;
+
+              // Repeat headers on new page
+              doc.setFillColor(50, 50, 50);
+              doc.rect(20, currentYPos - 5, pageWidth - 40, 8, 'F');
+              doc.setFontSize(9);
+              doc.setTextColor(255, 255, 255);
+              doc.text('Time', 25, currentYPos);
+              doc.text(settings.player1.name, 50, currentYPos);
+              doc.text(settings.player2.name, pageWidth / 2 + 20, currentYPos);
+              currentYPos += 8;
+              doc.setTextColor(0, 0, 0);
+              doc.setFontSize(8);
+              shotXPos = xPos + 15;
+            }
+          }
+          doc.setTextColor(0, 0, 0);
+          doc.setFont('helvetica', 'bold');
+          doc.text(',', shotXPos, currentYPos);
+          doc.setFont('helvetica', 'normal');
+          shotXPos += 3;
+        }
       });
 
       // Foul indicator

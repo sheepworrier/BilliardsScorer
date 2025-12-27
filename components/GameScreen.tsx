@@ -246,7 +246,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
   }, []);
 
   useEffect(() => {
-      if (state.settings.mode === 'points' && (state.score1 >= state.settings.target || state.score2 >= state.settings.target) && !state.isGameOver && !initialState.isGameOver) {
+      if (state.settings.mode === 'points' && (state.score1 >= state.settings.target || state.score2 >= state.settings.target) && !state.isGameOver) {
           // Save any unfinished break before ending the game
           const finalState = state.currentBreakScore > 0 ? {
             ...state,
@@ -259,7 +259,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
           } : state;
           onEndGame(finalState);
       }
-  }, [state, onEndGame, initialState.isGameOver]);
+  }, [state.score1, state.score2, state.settings.mode, state.settings.target, state.isGameOver, state.currentBreakScore, state.currentBreakShots, state.currentPlayerIndex, state.breaks, onEndGame]);
 
   const formatTime = (totalSeconds: number) => {
     const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -416,9 +416,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
                 // Disable opponent shots if opponent ball already potted
                 const disabledByOpponentPotted = isOpponentShot && state.isOpponentBallPotted;
 
-                // Disable cannon if opponent ball potted in current selection
+                // Disable cannon if opponent ball potted in current selection OR already potted in the break
                 const opponentPottedInSelection = currentShotSelection.includes(ShotType.POT_OPPONENT);
-                const disabledByCannonRule = isCannonShot && opponentPottedInSelection;
+                const disabledByCannonRule = isCannonShot && (opponentPottedInSelection || state.isOpponentBallPotted);
 
                 // Prevent both in-off red and in-off opponent in same stroke
                 const isInOffRed = type === ShotType.IN_OFF_RED;
