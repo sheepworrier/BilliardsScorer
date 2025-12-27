@@ -5,6 +5,7 @@ import { CannonIcon, InOffIcon, PotIcon } from './icons';
 interface SummaryScreenProps {
   gameState: GameState;
   onNewGame: () => void;
+  onBackToGame: () => void;
 }
 
 interface ShotIconProps {
@@ -12,12 +13,12 @@ interface ShotIconProps {
 }
 
 const ShotIcon: React.FC<ShotIconProps> = ({ type }) => {
-    const Icon = type.includes('CANNON') ? CannonIcon : type.includes('IN_OFF') ? InOffIcon : PotIcon;
-    const colorClass = type.includes('RED') ? 'text-red-500' : type.includes('OPPONENT') ? 'text-yellow-400' : 'text-blue-400';
+    const Icon = type === ShotType.CANNON ? CannonIcon : type.includes('In-off') ? InOffIcon : PotIcon;
+    const colorClass = type.includes('Red') ? 'text-red-500' : type.includes('Opponent') ? 'text-yellow-400' : 'text-blue-400';
     return <Icon className={`w-4 h-4 inline-block mx-0.5 ${colorClass}`} />;
 };
 
-const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame }) => {
+const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onBackToGame }) => {
   const { settings, score1, score2, breaks } = gameState;
 
   const winner = useMemo(() => {
@@ -172,7 +173,13 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame }) =
       </div>
 
 
-      <div className="mt-8 flex gap-4">
+      <div className="mt-8 flex gap-4 flex-wrap justify-center">
+        <button
+          onClick={onBackToGame}
+          className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-8 rounded-lg transition-colors duration-300 text-lg"
+        >
+          Back to Game
+        </button>
         <button
           onClick={exportToPDF}
           className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition-colors duration-300 text-lg"

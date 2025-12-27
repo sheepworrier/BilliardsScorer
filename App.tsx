@@ -23,6 +23,7 @@ const App: React.FC = () => {
       consecutiveCannons: 0,
       consecutiveHazards: 0,
       isOpponentBallPotted: false,
+      baulkLineCrossedAt: null,
     };
     setGameState(initialState);
     setView('game');
@@ -38,6 +39,13 @@ const App: React.FC = () => {
     setView('setup');
   }, []);
 
+  const handleBackToGame = useCallback(() => {
+    if (gameState) {
+      setGameState({ ...gameState, isGameOver: false });
+      setView('game');
+    }
+  }, [gameState]);
+
   const renderView = () => {
     switch (view) {
       case 'setup':
@@ -49,7 +57,7 @@ const App: React.FC = () => {
         return null;
       case 'summary':
         if (gameState) {
-          return <SummaryScreen gameState={gameState} onNewGame={handleNewGame} />;
+          return <SummaryScreen gameState={gameState} onNewGame={handleNewGame} onBackToGame={handleBackToGame} />;
         }
         return null;
       default:

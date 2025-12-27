@@ -50,4 +50,5 @@ export interface GameState {
   consecutiveCannons: number;
   consecutiveHazards: number;
   isOpponentBallPotted: boolean;
+  baulkLineCrossedAt: number | null; // Tracks the score when baulk line was last crossed
 }
