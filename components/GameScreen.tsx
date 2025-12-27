@@ -108,6 +108,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
       consecutiveCannons: 0,
       consecutiveHazards: 0,
       isOpponentBallPotted: false,
+      baulkLineCrossedAt: null,
     };
   }, []);
 
@@ -115,6 +116,14 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
     setState(prevState => handleFoul(prevState, 'Manual foul recorded'));
     setCurrentShotSelection([]);
   }, [handleFoul]);
+
+  const recordBaulkLineCrossing = useCallback(() => {
+    setState(prevState => ({
+      ...prevState,
+      baulkLineCrossedAt: prevState.currentBreakScore,
+      shotHistory: [...prevState.shotHistory, prevState],
+    }));
+  }, []);
 
   const addCombinedShot = useCallback(() => {
     if (currentShotSelection.length === 0) return;
@@ -141,6 +150,23 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
         }
         if (!hasCannon && hasHazard && prevState.consecutiveHazards >= 15) {
             return handleFoul(prevState, 'Exceeded 15 consecutive hazards');
+        }
+
+        // Check for baulk line crossing requirement
+        const newBreakScore = prevState.currentBreakScore + newShot.points;
+        const currentHundred = Math.floor(prevState.currentBreakScore / 100);
+        const newHundred = Math.floor(newBreakScore / 100);
+
+        // If we're crossing into a new hundred and the baulk line wasn't crossed in the previous hundred
+        if (newHundred > currentHundred) {
+          const lastCrossedHundred = prevState.baulkLineCrossedAt !== null
+            ? Math.floor(prevState.baulkLineCrossedAt / 100)
+            : -1;
+
+          // If we didn't cross the baulk line in the previous hundred (80-100 range)
+          if (lastCrossedHundred < currentHundred && prevState.currentBreakScore >= 80) {
+            return handleFoul(prevState, 'Failed to cross baulk line between 80-100 points');
+          }
         }
 
         const shotHistory = [...prevState.shotHistory, prevState];
@@ -202,7 +228,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
         total: prevState.currentBreakScore,
         timestamp: Date.now(),
       };
-      
+
       return {
         ...prevState,
         breaks: prevState.currentBreakScore > 0 ? [...prevState.breaks, newBreak] : prevState.breaks,
@@ -213,6 +239,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
         consecutiveCannons: 0,
         consecutiveHazards: 0,
         isOpponentBallPotted: false,
+        baulkLineCrossedAt: null,
       };
     });
     setCurrentShotSelection([]);
@@ -254,31 +281,53 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
   const predictedScores = useMemo(() => {
     if (state.settings.mode === 'points') {
       // Calculate predicted final scores based on progress toward target
-      const target = state.settings.target;
-      const totalScored = state.score1 + state.score2;
-      if (totalScored === 0) return null;
+      const h1 = state.settings.handicap1;
+      const h2 = state.settings.handicap2;
+      const t = state.settings.target;
+      const s1 = state.score1;
+      const s2 = state.score2;
 
-      const player1Percentage = state.score1 / totalScored;
-      const player2Percentage = state.score2 / totalScored;
+      // Calculate progress for each player
+      const p1 = (s1 - h1) / (t - h1);
+      const p2 = (s2 - h2) / (t - h2);
 
-      const predicted1 = Math.round(target * player1Percentage);
-      const predicted2 = Math.round(target * player2Percentage);
+      if (p1 === 0 && p2 === 0) return null;
+
+      let predicted1: number;
+      let predicted2: number;
+
+      if (p1 > p2) {
+        // Player 1 is ahead
+        predicted1 = t;
+        predicted2 = Math.round(p2 / p1 * (t - h2) + h2);
+      } else if (p2 > p1) {
+        // Player 2 is ahead
+        predicted2 = t;
+        predicted1 = Math.round(p1 / p2 * (t - h1) + h1);
+      } else {
+        // Equal progress
+        predicted1 = t;
+        predicted2 = t;
+      }
 
       return { predicted1, predicted2 };
     } else {
       // Time mode: extrapolate based on time elapsed
       if (timeElapsed === 0) return null;
 
-      const totalTime = state.settings.target * 60;
-      const timeProgress = timeElapsed / totalTime;
-      if (timeProgress === 0) return null;
+      const h1 = state.settings.handicap1;
+      const h2 = state.settings.handicap2;
+      const t = state.settings.target; // time target in minutes
+      const c = timeElapsed / 60; // current minutes elapsed
+      const s1 = state.score1;
+      const s2 = state.score2;
 
-      const predicted1 = Math.round(state.score1 / timeProgress);
-      const predicted2 = Math.round(state.score2 / timeProgress);
+      const predicted1 = Math.round(t / c * (s1 - h1) + h1);
+      const predicted2 = Math.round(t / c * (s2 - h2) + h2);
 
       return { predicted1, predicted2 };
     }
-  }, [state.settings.mode, state.settings.target, state.score1, state.score2, timeElapsed]);
+  }, [state.settings.mode, state.settings.target, state.settings.handicap1, state.settings.handicap2, state.score1, state.score2, timeElapsed]);
 
 
   return (
@@ -315,6 +364,34 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
       <div className="text-center my-4 flex-grow">
           <div className="text-lg text-gray-400">Current Break: {currentPlayer.name}</div>
           <div className="text-7xl font-bold text-green-400">{state.currentBreakScore}</div>
+          <div className="flex justify-center items-center gap-4 mt-2 text-sm">
+              <span className={`${state.consecutiveCannons >= 70 ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
+                  {state.consecutiveCannons} / 75 cannons
+              </span>
+              <span className={`${state.consecutiveHazards >= 10 ? 'text-yellow-500 font-bold' : 'text-gray-400'}`}>
+                  {state.consecutiveHazards} / 15 hazards
+              </span>
+          </div>
+          {state.currentBreakScore >= 80 && (() => {
+            const currentHundred = Math.floor(state.currentBreakScore / 100);
+            const lastCrossedHundred = state.baulkLineCrossedAt !== null
+              ? Math.floor(state.baulkLineCrossedAt / 100)
+              : -1;
+            const needsCrossing = lastCrossedHundred < currentHundred;
+            const rangeStart = currentHundred * 100 + 80;
+            const rangeEnd = (currentHundred + 1) * 100;
+
+            return needsCrossing ? (
+              <div className="mt-2">
+                <button
+                  onClick={recordBaulkLineCrossing}
+                  className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-xs"
+                >
+                  Baulk Line Crossed ({rangeStart}-{rangeEnd})
+                </button>
+              </div>
+            ) : null;
+          })()}
           <div className="flex flex-wrap justify-center items-center gap-2 mt-2 min-h-[30px]">
             {state.currentBreakShots.map((shot, index) => (
                 <React.Fragment key={index}>
@@ -326,24 +403,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
                     })}
                 </React.Fragment>
             ))}
-          </div>
-          <div className="flex justify-around text-center mt-4">
-              <div>
-                  <div className={`text-sm text-gray-400 ${state.consecutiveCannons >= 70 ? 'text-red-500 font-bold' : ''}`}>
-                      Consecutive Cannons (max 75)
-                  </div>
-                  <div className={`text-2xl font-bold ${state.consecutiveCannons >= 70 ? 'text-red-500' : ''}`}>
-                      {state.consecutiveCannons}
-                  </div>
-              </div>
-              <div>
-                  <div className={`text-sm text-gray-400 ${state.consecutiveHazards >= 10 ? 'text-yellow-500 font-bold' : ''}`}>
-                      Consecutive Hazards (max 15)
-                  </div>
-                  <div className={`text-2xl font-bold ${state.consecutiveHazards >= 10 ? 'text-yellow-500' : ''}`}>
-                      {state.consecutiveHazards}
-                  </div>
-              </div>
           </div>
       </div>
       
@@ -375,31 +434,31 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
                         key={type}
                         onClick={() => toggleShotSelection(type)}
                         disabled={isDisabled}
-                        className={`${isDisabled ? 'bg-gray-600 opacity-50 cursor-not-allowed' : color} text-white font-semibold p-2 rounded-lg flex flex-col items-center justify-center text-center text-xs h-20 transition-transform transform ${isSelected && !isDisabled ? 'ring-4 ring-green-400 scale-105' : 'hover:scale-105'}`}
+                        className={`${isDisabled ? 'bg-gray-600 opacity-50 cursor-not-allowed' : color} text-white font-semibold p-1.5 rounded flex flex-col items-center justify-center text-center text-xs h-16 transition-transform transform ${isSelected && !isDisabled ? 'ring-2 ring-green-400 scale-105' : 'hover:scale-105'}`}
                     >
-                        <Icon className="w-8 h-8 mb-1" />
+                        <Icon className="w-6 h-6 mb-0.5" />
                         <span>{label}</span>
                     </button>
                 )
             })}
         </div>
-         <button 
-            onClick={addCombinedShot} 
+         <button
+            onClick={addCombinedShot}
             disabled={currentShotSelection.length === 0}
-            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold p-3 rounded-lg flex items-center justify-center text-lg mb-3"
+            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold p-2 rounded flex items-center justify-center text-base mb-2"
         >
             Add Shot to Break
         </button>
-        <div className="grid grid-cols-2 gap-3 mb-3">
-            <button onClick={undoLastShot} className="bg-gray-600 hover:bg-gray-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
-                <UndoIcon className="w-6 h-6 mr-2" /> Undo
+        <div className="grid grid-cols-2 gap-2 mb-2">
+            <button onClick={undoLastShot} className="bg-gray-600 hover:bg-gray-700 text-white font-bold p-2 rounded flex items-center justify-center text-sm">
+                <UndoIcon className="w-5 h-5 mr-1" /> Undo
             </button>
-            <button onClick={endTurn} className="bg-gray-600 hover:bg-gray-700 text-white font-bold p-3 rounded-lg flex items-center justify-center">
-                Miss / End <NextPlayerIcon className="w-6 h-6 ml-2" />
+            <button onClick={endTurn} className="bg-gray-600 hover:bg-gray-700 text-white font-bold p-2 rounded flex items-center justify-center text-sm">
+                Miss / End <NextPlayerIcon className="w-5 h-5 ml-1" />
             </button>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-            <button onClick={recordFoul} className="bg-orange-600 hover:bg-orange-700 text-white font-bold p-3 rounded-lg">
+        <div className="grid grid-cols-2 gap-2">
+            <button onClick={recordFoul} className="bg-orange-600 hover:bg-orange-700 text-white font-bold p-2 rounded text-sm">
                 Record Foul
             </button>
             <button onClick={() => {
@@ -414,7 +473,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
                 }]
               } : state;
               onEndGame(finalState);
-            }} className="bg-red-700 hover:bg-red-800 text-white font-bold p-3 rounded-lg">End Game</button>
+            }} className="bg-red-700 hover:bg-red-800 text-white font-bold p-2 rounded text-sm">End Game</button>
         </div>
       </div>
     </div>
