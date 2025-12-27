@@ -246,7 +246,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
   }, []);
 
   useEffect(() => {
-      if (state.settings.mode === 'points' && (state.score1 >= state.settings.target || state.score2 >= state.settings.target)) {
+      if (state.settings.mode === 'points' && (state.score1 >= state.settings.target || state.score2 >= state.settings.target) && !state.isGameOver) {
           // Save any unfinished break before ending the game
           const finalState = state.currentBreakScore > 0 ? {
             ...state,
@@ -398,7 +398,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ initialState, onEndGame }) => {
                     {index > 0 && <span className="text-gray-500 mx-1">|</span>}
                     {shot.types.map((type, i) => {
                         const Icon = SHOT_CONFIG.find(sc => sc.type === type)?.icon;
-                        const colorClass = type.includes('RED') ? 'text-red-500' : type.includes('OPPONENT') ? 'text-yellow-400' : 'text-blue-400';
+                        const colorClass = type.includes('RED') ? 'text-red-600' : type.includes('OPPONENT') ? 'text-yellow-500' : 'text-blue-500';
                         return Icon ? <Icon key={i} className={`w-6 h-6 ${colorClass}`} /> : null;
                     })}
                 </React.Fragment>

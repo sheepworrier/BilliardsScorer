@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { GameState, ShotType } from '../types';
 import { CannonIcon, InOffIcon, PotIcon } from './icons';
+import { jsPDF } from 'jspdf';
 
 interface SummaryScreenProps {
   gameState: GameState;
@@ -14,7 +15,7 @@ interface ShotIconProps {
 
 const ShotIcon: React.FC<ShotIconProps> = ({ type }) => {
     const Icon = type === ShotType.CANNON ? CannonIcon : type.includes('In-off') ? InOffIcon : PotIcon;
-    const colorClass = type.includes('Red') ? 'text-red-500' : type.includes('Opponent') ? 'text-yellow-400' : 'text-blue-400';
+    const colorClass = type.includes('Red') ? 'text-red-600' : type.includes('Opponent') ? 'text-yellow-500' : 'text-blue-500';
     return <Icon className={`w-4 h-4 inline-block mx-0.5 ${colorClass}`} />;
 };
 
@@ -43,58 +44,167 @@ const SummaryScreen: React.FC<SummaryScreenProps> = ({ gameState, onNewGame, onB
     return `${minutes}:${seconds}`;
   };
 
+  const getShotSymbol = (type: ShotType): string => {
+    if (type === ShotType.CANNON) return '⚫⚫'; // Two circles for cannon
+    if (type.includes('In-off')) return '🔽'; // Down arrow for in-off
+    return '◀'; // Left arrow for pot
+  };
+
+  const getShotColor = (type: ShotType): [number, number, number] => {
+    if (type.includes('Red')) return [220, 38, 38]; // Red RGB
+    if (type.includes('Opponent')) return [234, 179, 8]; // Yellow RGB
+    return [59, 130, 246]; // Blue RGB for cannon
+  };
+
   const exportToPDF = () => {
-    // Create a simple text-based PDF content
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let yPos = 20;
+
+    // Title
+    doc.setFontSize(20);
+    doc.setTextColor(34, 197, 94); // Green
+    doc.text('ENGLISH BILLIARDS SCORE SHEET', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 15;
+
+    // Game Info
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
     const gameDate = new Date(gameState.startTime).toLocaleString();
     const gameMode = settings.mode === 'points' ? `${settings.target} points` : `${settings.target} minutes`;
+    doc.text(`Date: ${gameDate}`, 20, yPos);
+    yPos += 7;
+    doc.text(`Game Mode: ${gameMode}`, 20, yPos);
+    yPos += 15;
 
-    let pdfContent = `ENGLISH BILLIARDS SCORE SHEET\n\n`;
-    pdfContent += `Date: ${gameDate}\n`;
-    pdfContent += `Game Mode: ${gameMode}\n\n`;
-    pdfContent += `FINAL SCORES\n`;
-    pdfContent += `${settings.player1.name}: ${score1} (Top Break: ${topBreaks.p1Top})\n`;
-    pdfContent += `${settings.player2.name}: ${score2} (Top Break: ${topBreaks.p2Top})\n\n`;
-
+    // Winner announcement
+    doc.setFontSize(14);
+    doc.setTextColor(34, 197, 94); // Green
     if (winner) {
-      pdfContent += `Winner: ${winner.name}\n\n`;
+      doc.text(`Winner: ${winner.name}`, pageWidth / 2, yPos, { align: 'center' });
     } else {
-      pdfContent += `Result: Draw\n\n`;
+      doc.text("It's a draw!", pageWidth / 2, yPos, { align: 'center' });
     }
+    yPos += 15;
 
-    pdfContent += `GAME LOG\n`;
-    pdfContent += `${'Time'.padEnd(8)} | ${'Player'.padEnd(20)} | ${'Break'.padEnd(6)} | Shots\n`;
-    pdfContent += `${'-'.repeat(80)}\n`;
+    // Final Scores Box
+    doc.setFillColor(240, 240, 240);
+    doc.roundedRect(20, yPos, pageWidth - 40, 35, 3, 3, 'F');
 
-    breaks.forEach(breakItem => {
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    const col1X = 40;
+    const col2X = pageWidth - 60;
+
+    doc.text(settings.player1.name, col1X, yPos + 10, { align: 'center' });
+    doc.setFontSize(18);
+    doc.text(score1.toString(), col1X, yPos + 20, { align: 'center' });
+    doc.setFontSize(9);
+    doc.text(`Top Break: ${topBreaks.p1Top}`, col1X, yPos + 28, { align: 'center' });
+
+    doc.setFontSize(16);
+    doc.setTextColor(100, 100, 100);
+    doc.text('vs', pageWidth / 2, yPos + 20, { align: 'center' });
+
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text(settings.player2.name, col2X, yPos + 10, { align: 'center' });
+    doc.setFontSize(18);
+    doc.text(score2.toString(), col2X, yPos + 20, { align: 'center' });
+    doc.setFontSize(9);
+    doc.text(`Top Break: ${topBreaks.p2Top}`, col2X, yPos + 28, { align: 'center' });
+
+    yPos += 45;
+
+    // Game Log Header
+    doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Game Log', 20, yPos);
+    yPos += 10;
+
+    // Table Headers
+    doc.setFillColor(50, 50, 50);
+    doc.rect(20, yPos - 5, pageWidth - 40, 8, 'F');
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text('Time', 25, yPos);
+    doc.text(settings.player1.name, 50, yPos);
+    doc.text(settings.player2.name, pageWidth / 2 + 20, yPos);
+    yPos += 8;
+
+    // Game Log Entries
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(8);
+
+    breaks.forEach((breakItem) => {
+      if (yPos > 270) {
+        doc.addPage();
+        yPos = 20;
+
+        // Repeat headers on new page
+        doc.setFillColor(50, 50, 50);
+        doc.rect(20, yPos - 5, pageWidth - 40, 8, 'F');
+        doc.setFontSize(9);
+        doc.setTextColor(255, 255, 255);
+        doc.text('Time', 25, yPos);
+        doc.text(settings.player1.name, 50, yPos);
+        doc.text(settings.player2.name, pageWidth / 2 + 20, yPos);
+        yPos += 8;
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(8);
+      }
+
       const timeStr = formatTimeFromStart(breakItem.timestamp);
-      const playerName = breakItem.playerIndex === 0 ? settings.player1.name : settings.player2.name;
-      const breakTotal = breakItem.total.toString();
+      const isPlayer1 = breakItem.playerIndex === 0;
+      const xPos = isPlayer1 ? 50 : pageWidth / 2 + 20;
 
-      const shotTypes = breakItem.shots.map(shot => {
-        return shot.types.map(type => {
-          if (type.includes('CANNON')) return 'C';
-          if (type === ShotType.POT_RED) return 'PR';
-          if (type === ShotType.IN_OFF_RED) return 'IR';
-          if (type === ShotType.POT_OPPONENT) return 'PO';
-          if (type === ShotType.IN_OFF_OPPONENT) return 'IO';
-          return '';
-        }).join('+');
-      }).join(' | ');
+      // Time
+      doc.setTextColor(100, 100, 100);
+      doc.text(timeStr, 25, yPos);
 
-      const foulStr = breakItem.endedByFoul ? ' [FOUL]' : '';
-      pdfContent += `${timeStr.padEnd(8)} | ${playerName.padEnd(20)} | ${breakTotal.padEnd(6)} | ${shotTypes}${foulStr}\n`;
+      // Break total
+      doc.setTextColor(34, 197, 94); // Green
+      doc.setFont('helvetica', 'bold');
+      doc.text(breakItem.total.toString(), xPos, yPos);
+      doc.setFont('helvetica', 'normal');
+
+      // Shots with colored symbols
+      let shotXPos = xPos + 15;
+      breakItem.shots.forEach((shot, shotIndex) => {
+        if (shotIndex > 0) {
+          doc.setTextColor(150, 150, 150);
+          doc.text('|', shotXPos, yPos);
+          shotXPos += 3;
+        }
+
+        shot.types.forEach((type) => {
+          const symbol = getShotSymbol(type);
+          const color = getShotColor(type);
+          doc.setTextColor(color[0], color[1], color[2]);
+          doc.text(symbol, shotXPos, yPos);
+          shotXPos += symbol.length === 2 ? 5 : 4;
+        });
+      });
+
+      // Foul indicator
+      if (breakItem.endedByFoul) {
+        doc.setTextColor(239, 68, 68); // Red
+        doc.setFont('helvetica', 'bold');
+        doc.text('FOUL', shotXPos + 2, yPos);
+        doc.setFont('helvetica', 'normal');
+      }
+
+      yPos += 7;
     });
 
-    // Create a blob and download
-    const blob = new Blob([pdfContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `billiards-score-${new Date(gameState.startTime).toISOString().split('T')[0]}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Footer
+    const footerY = doc.internal.pageSize.getHeight() - 10;
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Generated by English Billiards Scorer', pageWidth / 2, footerY, { align: 'center' });
+
+    // Save the PDF
+    doc.save(`billiards-score-${new Date(gameState.startTime).toISOString().split('T')[0]}.pdf`);
   };
   
   return (
