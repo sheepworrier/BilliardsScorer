@@ -13,8 +13,12 @@ permissions:
 
 jobs:
   claude:
-    # Only run if the issue/comment contains "@claude" and it's NOT a PR
-    if: (contains(github.event.issue.body, '@claude') || contains(github.event.comment.body, '@claude')) && github.event.issue.pull_request == null
+    # Only run if the issue/comment contains "@claude", it's NOT a PR, and the
+    # author is trusted (prevents arbitrary outside users from triggering the agent)
+    if: >-
+      (contains(github.event.issue.body, '@claude') || contains(github.event.comment.body, '@claude')) &&
+      github.event.issue.pull_request == null &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -32,6 +36,9 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
           # 1. Prepare the Rules Variable
           RULES=""
@@ -43,8 +50,18 @@ jobs:
           fi
 
           # 2. Construct the Prompt
-          # We place RULES at the very top so they act as system instructions
-          PROMPT="PROJECT RULES (STRICTLY FOLLOW):\n$RULES\n\n----------------\n\nTASK:\nAct as a senior developer. Fix the issue described in GitHub Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}.\n\nCONTEXT:\n${{ github.event.issue.body }}"
+          # Issue title/body come in via env vars (not interpolated into the script
+          # text) so untrusted content can't break out of the quoted string here.
+          PROMPT="PROJECT RULES (STRICTLY FOLLOW):
+          $RULES
+
+          ----------------
+
+          TASK:
+          Act as a senior developer. Fix the issue described in GitHub Issue #$ISSUE_NUMBER: $ISSUE_TITLE.
+
+          CONTEXT:
+          $ISSUE_BODY"
 
           # 3. Run Agent
           # We use the constructed $PROMPT variable inside the -p flag
